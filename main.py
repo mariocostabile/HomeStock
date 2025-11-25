@@ -1,33 +1,54 @@
 import logging
 from telegram.ext import (
     ApplicationBuilder, CommandHandler, CallbackQueryHandler,
-    ConversationHandler, MessageHandler, filters
+    ConversationHandler, MessageHandler, filters, ContextTypes
 )
 import config
 import database
 import constants
 from handlers import common, categories, products
 
+# 1. Configurazione Logging
+# Questo serve a vedere cosa succede nella console nera
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
+logger = logging.getLogger(__name__)
+
+
+# 2. Funzione Gestore Errori
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """
+    Questa funzione viene chiamata ogni volta che si verifica un'eccezione.
+    Invece di far crashare il bot, logghiamo l'errore.
+    """
+    logger.error(msg="Eccezione durante la gestione dell'update:", exc_info=context.error)
+    # Su PythonAnywhere, spesso sono errori di rete transitori (503).
+    # Loggando l'errore, il bot rimane vivo e riprova al prossimo ciclo.
+
 
 if __name__ == '__main__':
-    # 1. Init Database
+    # Init Database
     database.init_db()
 
-    # 2. Build App
-    app = ApplicationBuilder().token(config.TOKEN).build()
+    # 3. Costruzione App con parametri anti-crash per PythonAnywhere
+    # - connect_timeout e read_timeout: aumentati per tollerare la lentezza del proxy
+    # - http_version: forzato a 1.1 per stabilità
+    app = (
+        ApplicationBuilder()
+        .token(config.TOKEN)
+        .connect_timeout(30)
+        .read_timeout(30)
+        .get_updates_http_version('1.1')
+        .http_version('1.1')
+        .build()
+    )
 
     # --- CONVERSATION CATEGORIE ---
     conv_cat = ConversationHandler(
         entry_points=[
-            # Aggiunta Categoria
             CallbackQueryHandler(categories.ask_category_name, pattern='^add_cat$'),
-
-            # --- QUESTA È LA RIGA CHE PROBABILMENTE MANCAVA ---
-            # Modifica / Elimina Categoria (Entry Point)
             CallbackQueryHandler(categories.list_categories_for_edit, pattern='^edit_cat_list$')
         ],
         states={
@@ -44,7 +65,6 @@ if __name__ == '__main__':
                 CallbackQueryHandler(categories.menu_categorie, pattern='^back_to_cat_menu$')
             ],
             constants.AZIONI_CATEGORIA: [
-                # Qui gestiamo le azioni, incluso il tornare alla lista
                 CallbackQueryHandler(categories.handle_category_actions, pattern='^(act_cat_|edit_cat_list)')
             ],
             constants.RINOMINA_CATEGORIA: [
@@ -55,7 +75,7 @@ if __name__ == '__main__':
         fallbacks=[CommandHandler('cancel', common.cancel)]
     )
 
-    # 4. Conversation Prodotti
+    # --- CONVERSATION PRODOTTI ---
     conv_prod = ConversationHandler(
         entry_points=[
             CallbackQueryHandler(products.step_1_ask_category, pattern='^add_prod_start$'),
@@ -93,7 +113,7 @@ if __name__ == '__main__':
                    CallbackQueryHandler(common.cancel, pattern='^cancel_flow$')]
     )
 
-    # 5. Add Handlers
+    # Aggiunta Handlers
     app.add_handler(conv_cat)
     app.add_handler(conv_prod)
 
@@ -108,6 +128,9 @@ if __name__ == '__main__':
     # Views
     app.add_handler(CallbackQueryHandler(products.show_full_inventory, pattern='^show_full_inventory$'))
     app.add_handler(CallbackQueryHandler(products.show_shopping_list, pattern='^show_shopping_list$'))
+
+    # 4. Registrazione del gestore errori (IMPORTANTE)
+    app.add_error_handler(error_handler)
 
     print("HomeStock (Professional Edition) è in esecuzione... 🚀")
     app.run_polling()
