@@ -62,7 +62,10 @@ if __name__ == '__main__':
             ],
             constants.MODIFICA_CATEGORIA: [
                 CallbackQueryHandler(categories.show_category_panel, pattern='^sel_edit_cat_'),
-                CallbackQueryHandler(categories.menu_categorie, pattern='^back_to_cat_menu$')
+                CallbackQueryHandler(categories.menu_categorie, pattern='^back_to_cat_menu$'),
+
+                # ### FIX QUI: Aggiungiamo il gestore per tornare alla lista dopo la rinomina
+                CallbackQueryHandler(categories.list_categories_for_edit, pattern='^edit_cat_list$')
             ],
             constants.AZIONI_CATEGORIA: [
                 CallbackQueryHandler(categories.handle_category_actions, pattern='^(act_cat_|edit_cat_list)')

@@ -3,23 +3,42 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 # --- KEYBOARD GENERATORS ---
 
-def create_smart_grid(buttons, back_button_data=None):
+def create_smart_grid(buttons, back_button_data=None, cols=None):
     """
     Prende una lista piatta di bottoni.
-    Se sono >= 4, li mette su 2 colonne. Altrimenti 1 colonna.
+    - Se cols=1: Forza 1 colonna (Bottoni Larghi).
+    - Se cols=2: Forza 2 colonne (Griglia).
+    - Se cols=None (Auto): Se bottoni >= 2 fa 2 colonne, altrimenti 1.
     Il tasto indietro viene messo sempre in fondo su una riga a parte.
     """
     keyboard = []
 
-    # Logica griglia
-    if len(buttons) >= 2:
+    # Logica decisione colonne
+    use_grid = False
+
+    if cols == 1:
+        use_grid = False  # Forza lista verticale
+    elif cols == 2:
+        use_grid = True  # Forza griglia
+    else:
+        # Logica Automatica (Default)
+        # Se ci sono 2 o più bottoni, usa la griglia
+        if len(buttons) >= 2:
+            use_grid = True
+        else:
+            use_grid = False
+
+    # Costruzione Layout
+    if use_grid:
+        # Griglia a 2 colonne
         for i in range(0, len(buttons), 2):
             keyboard.append(buttons[i:i + 2])
     else:
+        # Lista verticale (1 colonna)
         for btn in buttons:
             keyboard.append([btn])
 
-    # Aggiunta tasto back
+    # Aggiungi tasto indietro se richiesto
     if back_button_data:
         keyboard.append([InlineKeyboardButton("🔙 Indietro", callback_data=back_button_data)])
 
@@ -27,11 +46,12 @@ def create_smart_grid(buttons, back_button_data=None):
 
 
 def get_main_menu_keyboard():
-    # Definiamo solo i bottoni, la griglia pensa al layout
+    # Definiamo i bottoni del menu principale
     buttons = [
         InlineKeyboardButton("📂 Gestisci Categorie", callback_data='menu_categorie'),
         InlineKeyboardButton("🛒 Gestisci Prodotti", callback_data='menu_prodotti')
     ]
+    # Rimosso cols=1: Ora anche il menu principale sarà a scacchiera (fianco a fianco)
     return create_smart_grid(buttons)
 
 
@@ -55,8 +75,12 @@ def format_inventory_message(products, title="📋 Elenco Prodotti"):
         for item in items:
             qty = item['quantita']
             soglia = item['soglia_minima']
+            # Icona: 🔴 se sotto soglia, 🟢 se ok
             icon = "🔴" if qty <= soglia else "🟢"
+
+            # Formattazione numeri (rimuove .0 se intero)
             qty_str = f"{int(qty)}" if qty.is_integer() else f"{qty}"
+
             text += f"{icon} **{item['nome']}**: {qty_str} (Soglia: {int(soglia)})\n"
 
     return text

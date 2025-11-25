@@ -20,13 +20,11 @@ async def menu_categorie(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for cat in categorie:
             text += f"\n• {cat['nome']}"
 
-    # Lista piatta bottoni
     buttons = [
         InlineKeyboardButton("➕ Nuova Categoria", callback_data='add_cat'),
         InlineKeyboardButton("✏️ Modifica / Elimina", callback_data='edit_cat_list')
     ]
 
-    # Usiamo la smart grid (back_button_data gestisce il "Torna al menu")
     markup = utils.create_smart_grid(buttons, back_button_data='main_menu')
 
     await query.edit_message_text(text, reply_markup=markup, parse_mode='Markdown')
@@ -37,11 +35,7 @@ async def menu_categorie(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def ask_category_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-
-    # Qui usiamo direttamente la InlineKeyboard manuale perché è un solo tasto,
-    # ma potremmo usare utils.create_smart_grid([], back_button_data='back_to_cat_menu')
     keyboard = [[InlineKeyboardButton("🔙 Indietro", callback_data='back_to_cat_menu')]]
-
     await query.edit_message_text("✍️ **Scrivi il nome della categoria:**", reply_markup=InlineKeyboardMarkup(keyboard),
                                   parse_mode='Markdown')
     return constants.INSERIMENTO_NOME_CATEGORIA
@@ -54,9 +48,7 @@ async def save_category(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         msg = f"❌ La categoria **{nome}** esiste già!"
 
-    buttons = [
-        InlineKeyboardButton("➕ Ancora una", callback_data='add_cat')
-    ]
+    buttons = [InlineKeyboardButton("➕ Ancora una", callback_data='add_cat')]
     markup = utils.create_smart_grid(buttons, back_button_data='back_to_cat_menu')
 
     await update.message.reply_text(msg, reply_markup=markup, parse_mode='Markdown')
@@ -66,49 +58,56 @@ async def save_category(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # --- FLUSSO MODIFICA/ELIMINA ---
 
 async def list_categories_for_edit(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
+    """Mostra la lista delle categorie (Gestisce sia Click che Testo)"""
 
-    categorie = database.get_categories(update.effective_user.id)
+    user_id = update.effective_user.id
+    categorie = database.get_categories(user_id)
     flash_message = context.user_data.pop('flash_msg', None)
 
     base_text = "✏️ **Quale categoria vuoi modificare?**"
     text = f"{flash_message}\n\n{base_text}" if flash_message else base_text
 
+    # Se non ci sono categorie
     if not categorie:
-        if flash_message:
-            await query.message.reply_text(f"{flash_message}\n(Non hai più categorie)")
+        if update.callback_query:
+            await update.callback_query.answer("Nessuna categoria da modificare!", show_alert=True)
             return await menu_categorie(update, context)
         else:
-            await query.answer("Nessuna categoria da modificare!", show_alert=True)
-            return await menu_categorie(update, context)
+            # Se arriviamo da testo (es. rinomina) e non ci sono più categorie (raro ma possibile)
+            await update.message.reply_text("Nessuna categoria rimasta.")
+            # Qui dovremmo idealmente tornare al menu principale, ma serve un trigger diverso.
+            # Per ora lasciamo un messaggio semplice.
+            return ConversationHandler.END
 
+    # Creazione Bottoni
     buttons = []
     for cat in categorie:
         buttons.append(InlineKeyboardButton(f"📂 {cat['nome']}", callback_data=f"sel_edit_cat_{cat['id']}"))
 
     markup = utils.create_smart_grid(buttons, back_button_data='back_to_cat_menu')
 
-    try:
-        await query.edit_message_text(text, reply_markup=markup, parse_mode='Markdown')
-    except Exception:
-        await query.message.reply_text(text, reply_markup=markup, parse_mode='Markdown')
+    # --- LOGICA IBRIDA (Click vs Testo) ---
+    if update.callback_query:
+        # Caso 1: Arrivo da un bottone (es. "Indietro" o "Modifica")
+        query = update.callback_query
+        await query.answer()
+        try:
+            await query.edit_message_text(text, reply_markup=markup, parse_mode='Markdown')
+        except Exception:
+            await query.message.reply_text(text, reply_markup=markup, parse_mode='Markdown')
+    else:
+        # Caso 2: Arrivo da un messaggio di testo (es. ho appena rinominato)
+        await update.message.reply_text(text, reply_markup=markup, parse_mode='Markdown')
 
     return constants.MODIFICA_CATEGORIA
 
 
-async def show_category_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-
-    parts = query.data.split("_")
-    cat_id = parts[-1]
-    context.user_data['edit_cat_id'] = cat_id
-
+# --- FUNZIONE HELPER PER DISEGNARE IL PANNELLO ---
+async def render_category_panel(query, cat_id):
     cat = database.get_category_by_id(cat_id)
+
     if not cat:
-        await query.answer("Categoria non trovata.")
-        return await list_categories_for_edit(update, context)
+        return False
 
     n_prod = database.count_products_in_category(cat_id)
 
@@ -125,6 +124,22 @@ async def show_category_panel(update: Update, context: ContextTypes.DEFAULT_TYPE
     markup = utils.create_smart_grid(buttons, back_button_data='edit_cat_list')
 
     await query.edit_message_text(text, reply_markup=markup, parse_mode='Markdown')
+    return True
+
+
+async def show_category_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Entry point quando clicchi una categoria dalla lista"""
+    query = update.callback_query
+    await query.answer()
+
+    parts = query.data.split("_")
+    cat_id = parts[-1]
+    context.user_data['edit_cat_id'] = cat_id
+
+    if not await render_category_panel(query, cat_id):
+        await query.answer("Categoria non trovata.")
+        return await list_categories_for_edit(update, context)
+
     return constants.AZIONI_CATEGORIA
 
 
@@ -132,6 +147,10 @@ async def handle_category_actions(update: Update, context: ContextTypes.DEFAULT_
     query = update.callback_query
     action = query.data
     cat_id = context.user_data.get('edit_cat_id')
+
+    # Torna alla lista
+    if action == 'edit_cat_list':
+        return await list_categories_for_edit(update, context)
 
     if action == 'act_cat_delete':
         database.delete_category(cat_id)
@@ -146,8 +165,10 @@ async def handle_category_actions(update: Update, context: ContextTypes.DEFAULT_
         return constants.RINOMINA_CATEGORIA
 
     if action == 'back_to_cat_panel':
-        query.data = f"sel_edit_cat_{cat_id}"
-        return await show_category_panel(update, context)
+        await query.answer()
+        if not await render_category_panel(query, cat_id):
+            return await list_categories_for_edit(update, context)
+        return constants.AZIONI_CATEGORIA
 
 
 async def save_renamed_category(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -156,11 +177,8 @@ async def save_renamed_category(update: Update, context: ContextTypes.DEFAULT_TY
 
     if database.update_category_name(cat_id, new_name):
         context.user_data['flash_msg'] = f"✅ Rinomina completata: **{new_name}**"
-        buttons = [InlineKeyboardButton("🔙 Torna alla Lista", callback_data='edit_cat_list')]
-        markup = utils.create_smart_grid(buttons)
-        await update.message.reply_text(f"✅ Rinomina completata: **{new_name}**", reply_markup=markup,
-                                        parse_mode='Markdown')
-        return constants.MODIFICA_CATEGORIA
+        # Ora chiamiamo la lista che saprà gestire il fatto che siamo in un messaggio di testo
+        return await list_categories_for_edit(update, context)
     else:
         await update.message.reply_text("❌ Esiste già una categoria con questo nome! Riprova o clicca Annulla.")
         return constants.RINOMINA_CATEGORIA
