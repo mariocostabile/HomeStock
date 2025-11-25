@@ -20,17 +20,36 @@ if __name__ == '__main__':
     # 2. Build App
     app = ApplicationBuilder().token(config.TOKEN).build()
 
-    # 3. Conversation Categorie
+    # --- CONVERSATION CATEGORIE ---
     conv_cat = ConversationHandler(
-        entry_points=[CallbackQueryHandler(categories.ask_category_name, pattern='^add_cat$')],
+        entry_points=[
+            # Aggiunta Categoria
+            CallbackQueryHandler(categories.ask_category_name, pattern='^add_cat$'),
+
+            # --- QUESTA È LA RIGA CHE PROBABILMENTE MANCAVA ---
+            # Modifica / Elimina Categoria (Entry Point)
+            CallbackQueryHandler(categories.list_categories_for_edit, pattern='^edit_cat_list$')
+        ],
         states={
             constants.INSERIMENTO_NOME_CATEGORIA: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, categories.save_category),
-                CallbackQueryHandler(categories.menu_categorie, pattern='^back_to_cat_list$')
+                CallbackQueryHandler(categories.menu_categorie, pattern='^back_to_cat_menu$')
             ],
             constants.SCELTA_DOPO_CATEGORIA: [
                 CallbackQueryHandler(categories.ask_category_name, pattern='^add_cat$'),
-                CallbackQueryHandler(common.start, pattern='^main_menu$')
+                CallbackQueryHandler(categories.menu_categorie, pattern='^back_to_cat_menu$')
+            ],
+            constants.MODIFICA_CATEGORIA: [
+                CallbackQueryHandler(categories.show_category_panel, pattern='^sel_edit_cat_'),
+                CallbackQueryHandler(categories.menu_categorie, pattern='^back_to_cat_menu$')
+            ],
+            constants.AZIONI_CATEGORIA: [
+                # Qui gestiamo le azioni, incluso il tornare alla lista
+                CallbackQueryHandler(categories.handle_category_actions, pattern='^(act_cat_|edit_cat_list)')
+            ],
+            constants.RINOMINA_CATEGORIA: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, categories.save_renamed_category),
+                CallbackQueryHandler(categories.handle_category_actions, pattern='^back_to_cat_panel$')
             ]
         },
         fallbacks=[CommandHandler('cancel', common.cancel)]

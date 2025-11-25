@@ -9,15 +9,17 @@ import utils
 async def menu_prodotti(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    keyboard = [
-        [InlineKeyboardButton("➕ Aggiungi Prodotto", callback_data='add_prod_start')],
-        [InlineKeyboardButton("✏️ Modifica / Aggiorna", callback_data='mod_start')],
-        [InlineKeyboardButton("🚨 Genera Lista Spesa", callback_data='show_shopping_list')],
-        [InlineKeyboardButton("📋 Inventario Completo", callback_data='show_full_inventory')],
-        [InlineKeyboardButton("🔙 Menu Principale", callback_data='main_menu')]
+
+    buttons = [
+        InlineKeyboardButton("➕ Aggiungi Prodotto", callback_data='add_prod_start'),
+        InlineKeyboardButton("✏️ Modifica / Aggiorna", callback_data='mod_start'),
+        InlineKeyboardButton("🚨 Genera Lista Spesa", callback_data='show_shopping_list'),
+        InlineKeyboardButton("📋 Inventario Completo", callback_data='show_full_inventory')
     ]
-    await query.edit_message_text("🛒 **Gestione Prodotti**\nCosa vuoi fare?",
-                                  reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+    markup = utils.create_smart_grid(buttons, back_button_data='main_menu')
+
+    await query.edit_message_text("🛒 **Gestione Prodotti**\nCosa vuoi fare?", reply_markup=markup,
+                                  parse_mode='Markdown')
     return ConversationHandler.END
 
 
@@ -27,8 +29,11 @@ async def show_full_inventory(update: Update, context: ContextTypes.DEFAULT_TYPE
     await query.answer()
     products = database.get_products(update.effective_user.id)
     message_text = utils.format_inventory_message(products, title="📋 Inventario Completo")
-    keyboard = [[InlineKeyboardButton("🔙 Menu Prodotti", callback_data='menu_prodotti')]]
-    await query.edit_message_text(message_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+
+    # Anche qui smart grid, anche se è un bottone solo
+    markup = utils.create_smart_grid([], back_button_data='menu_prodotti')
+
+    await query.edit_message_text(message_text, reply_markup=markup, parse_mode='Markdown')
 
 
 async def show_shopping_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -37,8 +42,10 @@ async def show_shopping_list(update: Update, context: ContextTypes.DEFAULT_TYPE)
     products = database.get_low_stock_products(update.effective_user.id)
     message_text = utils.format_inventory_message(products, title="🚨 Lista della Spesa")
     if not products: message_text += "\n🎉 Ottimo! Hai tutto quello che ti serve."
-    keyboard = [[InlineKeyboardButton("🔙 Menu Prodotti", callback_data='menu_prodotti')]]
-    await query.edit_message_text(message_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+
+    markup = utils.create_smart_grid([], back_button_data='menu_prodotti')
+
+    await query.edit_message_text(message_text, reply_markup=markup, parse_mode='Markdown')
 
 
 # --- INSERIMENTO PRODOTTI ---
@@ -52,14 +59,14 @@ async def step_1_ask_category(update: Update, context: ContextTypes.DEFAULT_TYPE
         await query.edit_message_text("⚠️ Non hai categorie!", reply_markup=utils.get_main_menu_keyboard())
         return ConversationHandler.END
 
-    keyboard = []
+    buttons = []
     for cat in categorie:
-        keyboard.append([InlineKeyboardButton(cat['nome'], callback_data=f"sel_cat_{cat['id']}")])
-    keyboard.append([InlineKeyboardButton("🔙 Indietro", callback_data='menu_prodotti')])
+        buttons.append(InlineKeyboardButton(cat['nome'], callback_data=f"sel_cat_{cat['id']}"))
+
+    markup = utils.create_smart_grid(buttons, back_button_data='menu_prodotti')
 
     if query.message:
-        await query.edit_message_text("1️⃣ **Scegli la categoria:**", reply_markup=InlineKeyboardMarkup(keyboard),
-                                      parse_mode='Markdown')
+        await query.edit_message_text("1️⃣ **Scegli la categoria:**", reply_markup=markup, parse_mode='Markdown')
     return constants.SCELTA_CATEGORIA_PRODOTTO
 
 
@@ -79,14 +86,16 @@ async def step_3_ask_qty(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message:
         context.user_data['temp_nome'] = update.message.text
         keyboard = [[InlineKeyboardButton("🔙 Indietro", callback_data='back_to_step_2')]]
-        await update.message.reply_text(f"Ok, **{context.user_data['temp_nome']}**.\n3️⃣ **Quantità attuale?**",
-                                        reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        await update.message.reply_text(
+            f"Ok, **{context.user_data['temp_nome']}**.\n3️⃣ **Quantità attuale?**\n(Scrivi solo il numero)",
+            reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
     elif update.callback_query:
         query = update.callback_query
         await query.answer()
         keyboard = [[InlineKeyboardButton("🔙 Indietro", callback_data='back_to_step_2')]]
-        await query.edit_message_text(f"Ok, **{context.user_data.get('temp_nome')}**.\n3️⃣ **Quantità attuale?**",
-                                      reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        await query.edit_message_text(
+            f"Ok, **{context.user_data.get('temp_nome')}**.\n3️⃣ **Quantità attuale?**\n(Scrivi solo il numero)",
+            reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
     return constants.QUANTITA_PRODOTTO
 
 
@@ -95,6 +104,7 @@ async def step_4_ask_threshold(update: Update, context: ContextTypes.DEFAULT_TYP
         try:
             context.user_data['temp_qty'] = float(update.message.text)
         except ValueError:
+            await update.message.reply_text("⚠️ Per favore inserisci un numero valido!")
             return constants.QUANTITA_PRODOTTO
 
         keyboard = [[InlineKeyboardButton("🔙 Indietro", callback_data='back_to_step_3')]]
@@ -113,6 +123,7 @@ async def step_5_save_final(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         soglia = float(update.message.text)
     except ValueError:
+        await update.message.reply_text("⚠️ Numero non valido!")
         return constants.SOGLIA_PRODOTTO
 
     database.add_product(
@@ -124,22 +135,50 @@ async def step_5_save_final(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     msg = f"✅ **{context.user_data['temp_nome']}** aggiunto!"
-    keyboard = [[InlineKeyboardButton("➕ Altro", callback_data='add_prod_start')],
-                [InlineKeyboardButton("🏠 Menu", callback_data='main_menu')]]
-    await update.message.reply_text(msg, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+    buttons = [InlineKeyboardButton("➕ Altro", callback_data='add_prod_start')]
+    markup = utils.create_smart_grid(buttons, back_button_data='main_menu')
+
+    await update.message.reply_text(msg, reply_markup=markup, parse_mode='Markdown')
     return constants.FINE_PRODOTTO
 
 
-# --- MODIFICA PRODOTTI (HELPER & LOGIC) ---
+# --- MODIFICA PRODOTTI ---
 
 async def list_products_for_category(query, context, cat_id):
-    products = database.get_products_by_category(cat_id)
-    keyboard = []
+    if cat_id == 'orphan':
+        products = database.get_orphaned_products(query.from_user.id)
+        title = "⚠️ Prodotti Senza Categoria"
+    else:
+        products = database.get_products_by_category(cat_id)
+        title = "📦 Scegli il prodotto:"
+
+    buttons = []
     if products:
         for p in products:
-            keyboard.append([InlineKeyboardButton(f"{p['nome']}", callback_data=f"mod_prod_{p['id']}")])
-    keyboard.append([InlineKeyboardButton("🔙 Indietro", callback_data='mod_start')])
-    await query.edit_message_text("📦 **Scegli il prodotto da gestire:**", reply_markup=InlineKeyboardMarkup(keyboard),
+            buttons.append(InlineKeyboardButton(f"{p['nome']}", callback_data=f"mod_prod_{p['id']}"))
+
+    markup = utils.create_smart_grid(buttons, back_button_data='mod_start')
+
+    text = f"**{title}**" if products else f"{title}\n\n_Vuoto_"
+    await query.edit_message_text(text, reply_markup=markup, parse_mode='Markdown')
+
+
+async def show_move_category_selection(query, context, prod_id):
+    user_id = query.from_user.id
+    categorie = database.get_categories(user_id)
+
+    if not categorie:
+        await query.answer("Crea prima delle categorie!", show_alert=True)
+        return
+
+    buttons = []
+    for cat in categorie:
+        buttons.append(InlineKeyboardButton(f"📂 {cat['nome']}", callback_data=f"act_move_do_{prod_id}_{cat['id']}"))
+
+    # Per il tasto back qui dobbiamo tornare al pannello del prodotto, non al menu
+    markup = utils.create_smart_grid(buttons, back_button_data=f"mod_prod_{prod_id}")
+
+    await query.edit_message_text("📍 **Dove vuoi spostare questo prodotto?**", reply_markup=markup,
                                   parse_mode='Markdown')
 
 
@@ -148,26 +187,37 @@ async def show_control_panel(query, prod):
     soglia = prod['soglia_minima']
     qty_str = f"{int(qty)}" if qty.is_integer() else f"{qty}"
     soglia_str = f"{int(soglia)}" if soglia.is_integer() else f"{soglia}"
+
+    cat_name = "⚠️ Nessuna"
+    if prod['categoria_id']:
+        cat_info = database.get_category_by_id(prod['categoria_id'])
+        if cat_info: cat_name = cat_info['nome']
+
     status = "🟢 OK" if qty > soglia else "🔴 SCORTA BASSA"
 
     text = (
         f"✏️ **Gestione: {prod['nome']}**\n"
+        f"📂 Categoria: {cat_name}\n"
         f"----------------------------\n"
         f"📦 Quantità: **{qty_str}**\n"
         f"⚠️ Soglia: **{soglia_str}**\n"
         f"Stato: {status}\n"
     )
 
-    keyboard = [
-        [InlineKeyboardButton("➖ Stock", callback_data=f"act_stock_minus_{prod['id']}"),
-         InlineKeyboardButton("Stock ➕", callback_data=f"act_stock_plus_{prod['id']}")],
-        [InlineKeyboardButton("➖ Soglia", callback_data=f"act_thr_minus_{prod['id']}"),
-         InlineKeyboardButton("Soglia ➕", callback_data=f"act_thr_plus_{prod['id']}")],
-        [InlineKeyboardButton("🗑️ Elimina Prodotto", callback_data=f"act_del_{prod['id']}")],
-        [InlineKeyboardButton("🔙 Indietro", callback_data="back_to_prod_list")]
+    # LISTA BOTTONI PER LA GRIGLIA (6 Elementi -> 3 Righe da 2)
+    buttons = [
+        InlineKeyboardButton("➖ Stock", callback_data=f"act_stock_minus_{prod['id']}"),
+        InlineKeyboardButton("Stock ➕", callback_data=f"act_stock_plus_{prod['id']}"),
+        InlineKeyboardButton("➖ Soglia", callback_data=f"act_thr_minus_{prod['id']}"),
+        InlineKeyboardButton("Soglia ➕", callback_data=f"act_thr_plus_{prod['id']}"),
+        InlineKeyboardButton("📂 Sposta", callback_data=f"act_move_start_{prod['id']}"),
+        InlineKeyboardButton("🗑️ Elimina", callback_data=f"act_del_{prod['id']}")
     ]
+
+    markup = utils.create_smart_grid(buttons, back_button_data="back_to_prod_list")
+
     try:
-        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        await query.edit_message_text(text, reply_markup=markup, parse_mode='Markdown')
     except Exception:
         pass
 
@@ -175,20 +225,26 @@ async def show_control_panel(query, prod):
 async def start_modify_flow(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    categorie = database.get_categories(update.effective_user.id)
+    user_id = update.effective_user.id
+    categorie = database.get_categories(user_id)
+    orphans = database.get_orphaned_products(user_id)
 
-    if not categorie:
-        await query.edit_message_text("⚠️ Non hai categorie!", reply_markup=InlineKeyboardMarkup(
-            [[InlineKeyboardButton("🔙 Indietro", callback_data='menu_prodotti')]]))
+    buttons = []
+
+    if orphans:
+        buttons.append(InlineKeyboardButton(f"⚠️ Senza Categoria ({len(orphans)})", callback_data="mod_cat_orphan"))
+
+    if not categorie and not orphans:
+        await query.edit_message_text("⚠️ Non hai categorie né prodotti!", reply_markup=utils.get_main_menu_keyboard())
         return ConversationHandler.END
 
-    keyboard = []
     for cat in categorie:
-        keyboard.append([InlineKeyboardButton(f"📂 {cat['nome']}", callback_data=f"mod_cat_{cat['id']}")])
-    keyboard.append([InlineKeyboardButton("🔙 Indietro", callback_data='menu_prodotti')])
+        buttons.append(InlineKeyboardButton(f"📂 {cat['nome']}", callback_data=f"mod_cat_{cat['id']}"))
 
-    await query.edit_message_text("✏️ **Scegli una categoria da modificare:**",
-                                  reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+    markup = utils.create_smart_grid(buttons, back_button_data='menu_prodotti')
+
+    await query.edit_message_text("✏️ **Scegli una categoria da modificare:**", reply_markup=markup,
+                                  parse_mode='Markdown')
     return constants.MODIFICA_PRODOTTO
 
 
@@ -196,27 +252,27 @@ async def manage_product_selection(update: Update, context: ContextTypes.DEFAULT
     query = update.callback_query
     data = query.data
 
-    # 1. SCELTA CATEGORIA -> LISTA PRODOTTI
     if data.startswith("mod_cat_"):
         cat_id = data.split("_")[2]
         context.user_data['current_mod_cat_id'] = cat_id
         await list_products_for_category(query, context, cat_id)
         return constants.MODIFICA_PRODOTTO
 
-    # 2. SCELTA PRODOTTO -> PANNELLO
     if data.startswith("mod_prod_"):
         prod_id = data.split("_")[2]
         prod = database.get_product_by_id(prod_id)
-        context.user_data['current_mod_cat_id'] = prod['categoria_id']
+        if prod['categoria_id'] is None:
+            context.user_data['current_mod_cat_id'] = 'orphan'
+        else:
+            context.user_data['current_mod_cat_id'] = prod['categoria_id']
         await show_control_panel(query, prod)
         return constants.MODIFICA_PRODOTTO
 
-    # 3. AZIONI
     if data.startswith("act_"):
         parts = data.split("_")
+        action_type = parts[1]
 
-        # DELETE
-        if parts[1] == "del":
+        if action_type == "del":
             prod_id = parts[2]
             database.delete_product(prod_id)
             await query.answer("🗑️ Prodotto eliminato!")
@@ -224,10 +280,23 @@ async def manage_product_selection(update: Update, context: ContextTypes.DEFAULT
             await list_products_for_category(query, context, cat_id)
             return constants.MODIFICA_PRODOTTO
 
-        # STOCK/SOGLIA
+        if action_type == "move" and parts[2] == "start":
+            prod_id = parts[3]
+            await show_move_category_selection(query, context, prod_id)
+            return constants.MODIFICA_PRODOTTO
+
+        if action_type == "move" and parts[2] == "do":
+            prod_id = parts[3]
+            new_cat_id = parts[4]
+            database.update_product_category(prod_id, new_cat_id)
+            await query.answer("✅ Prodotto spostato!")
+            prod = database.get_product_by_id(prod_id)
+            context.user_data['current_mod_cat_id'] = new_cat_id
+            await show_control_panel(query, prod)
+            return constants.MODIFICA_PRODOTTO
+
         target, action, prod_id = parts[1], parts[2], parts[3]
         prod = database.get_product_by_id(prod_id)
-
         if not prod:
             await query.answer("Errore: Prodotto non trovato.", show_alert=True)
             return constants.MODIFICA_PRODOTTO
@@ -247,7 +316,6 @@ async def manage_product_selection(update: Update, context: ContextTypes.DEFAULT
         await show_control_panel(query, updated_prod)
         return constants.MODIFICA_PRODOTTO
 
-    # 4. BACK TO LIST
     if data == "back_to_prod_list":
         cat_id = context.user_data.get('current_mod_cat_id')
         await list_products_for_category(query, context, cat_id)

@@ -38,7 +38,9 @@ def init_db():
     conn.commit()
     conn.close()
 
-# --- CATEGORIE ---
+# ==========================
+# SEZIONE CATEGORIE
+# ==========================
 
 def add_category(owner_id, nome_categoria):
     conn = get_connection()
@@ -58,7 +60,49 @@ def get_categories(owner_id):
     conn.close()
     return result
 
-# --- PRODOTTI ---
+# --- LE FUNZIONI CHE TI MANCAVANO ---
+
+def get_category_by_id(cat_id):
+    """Recupera una singola categoria per ID"""
+    conn = get_connection()
+    curs = conn.execute("SELECT * FROM categorie WHERE id = ?", (cat_id,))
+    res = curs.fetchone()
+    conn.close()
+    return res
+
+def count_products_in_category(cat_id):
+    """Conta quanti prodotti ci sono in una categoria"""
+    conn = get_connection()
+    curs = conn.execute("SELECT COUNT(*) FROM prodotti WHERE categoria_id = ?", (cat_id,))
+    count = curs.fetchone()[0]
+    conn.close()
+    return count
+
+def update_category_name(cat_id, new_name):
+    """Rinomina una categoria"""
+    conn = get_connection()
+    try:
+        conn.execute("UPDATE categorie SET nome = ? WHERE id = ?", (new_name, cat_id))
+        conn.commit()
+        return True
+    except sqlite3.IntegrityError:
+        return False # Nome già esistente
+    finally:
+        conn.close()
+
+def delete_category(cat_id):
+    """Elimina una categoria e imposta i suoi prodotti come 'Senza Categoria'"""
+    conn = get_connection()
+    # 1. Prima scolleghiamo i prodotti (li rendiamo orfani manualmente)
+    conn.execute("UPDATE prodotti SET categoria_id = NULL WHERE categoria_id = ?", (cat_id,))
+    # 2. Poi cancelliamo la categoria
+    conn.execute("DELETE FROM categorie WHERE id = ?", (cat_id,))
+    conn.commit()
+    conn.close()
+
+# ==========================
+# SEZIONE PRODOTTI
+# ==========================
 
 def add_product(owner_id, categoria_id, nome, quantita, soglia):
     conn = get_connection()
@@ -97,10 +141,19 @@ def get_low_stock_products(owner_id):
     conn.close()
     return result
 
-# --- FUNZIONI PER LA MODIFICA (AGGIORNATE) ---
+def get_orphaned_products(owner_id):
+    """Recupera i prodotti che non hanno una categoria (orfani)"""
+    conn = get_connection()
+    curs = conn.execute("SELECT * FROM prodotti WHERE owner_id = ? AND categoria_id IS NULL", (owner_id,))
+    result = curs.fetchall()
+    conn.close()
+    return result
+
+# ==========================
+# SEZIONE MODIFICA PRODOTTI
+# ==========================
 
 def get_products_by_category(category_id):
-    """Restituisce solo i prodotti di una certa categoria"""
     conn = get_connection()
     query = "SELECT * FROM prodotti WHERE categoria_id = ?"
     curs = conn.execute(query, (category_id,))
@@ -109,7 +162,6 @@ def get_products_by_category(category_id):
     return result
 
 def get_product_by_id(product_id):
-    """Restituisce un singolo prodotto"""
     conn = get_connection()
     curs = conn.execute("SELECT * FROM prodotti WHERE id = ?", (product_id,))
     result = curs.fetchone()
@@ -117,21 +169,24 @@ def get_product_by_id(product_id):
     return result
 
 def update_product_quantity(product_id, new_quantity):
-    """Aggiorna la quantità"""
     conn = get_connection()
     conn.execute("UPDATE prodotti SET quantita = ? WHERE id = ?", (new_quantity, product_id))
     conn.commit()
     conn.close()
 
 def update_product_threshold(product_id, new_threshold):
-    """NUOVA: Aggiorna la soglia minima"""
     conn = get_connection()
     conn.execute("UPDATE prodotti SET soglia_minima = ? WHERE id = ?", (new_threshold, product_id))
     conn.commit()
     conn.close()
 
+def update_product_category(product_id, new_category_id):
+    conn = get_connection()
+    conn.execute("UPDATE prodotti SET categoria_id = ? WHERE id = ?", (new_category_id, product_id))
+    conn.commit()
+    conn.close()
+
 def delete_product(product_id):
-    """Elimina il prodotto"""
     conn = get_connection()
     conn.execute("DELETE FROM prodotti WHERE id = ?", (product_id,))
     conn.commit()
