@@ -134,6 +134,10 @@ if __name__ == '__main__':
     app.add_handler(CallbackQueryHandler(products.show_full_inventory, pattern='^show_full_inventory$'))
     app.add_handler(CallbackQueryHandler(products.show_shopping_list, pattern='^show_shopping_list$'))
 
+    # --- NUOVI HANDLERS PER LA STAMPA (Invia in Chat) ---
+    app.add_handler(CallbackQueryHandler(products.print_shopping_list_text, pattern='^print_shopping_list$'))
+    app.add_handler(CallbackQueryHandler(products.print_full_inventory_text, pattern='^print_full_inventory$'))
+
     # 4. Registrazione del gestore errori (IMPORTANTE)
     app.add_error_handler(error_handler)
 

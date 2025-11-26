@@ -22,13 +22,19 @@ async def menu_prodotti(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # --- VISUALIZZAZIONE ---
+# ... (imports rimangono uguali)
+
+# --- VISUALIZZAZIONE ---
+
 async def show_full_inventory(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     products = database.get_products(update.effective_user.id)
     message_text = utils.format_inventory_message(products, title="📋 Inventario Completo")
 
-    markup = utils.create_smart_grid([], back_button_data='main_menu')
+    # Aggiungiamo anche qui il tasto stampa, perché no? È comodo.
+    buttons = [InlineKeyboardButton("📤 Invia in Chat", callback_data='print_full_inventory')]
+    markup = utils.create_smart_grid(buttons, back_button_data='main_menu')
 
     await query.edit_message_text(message_text, reply_markup=markup, parse_mode='Markdown')
 
@@ -38,19 +44,49 @@ async def show_shopping_list(update: Update, context: ContextTypes.DEFAULT_TYPE)
     await query.answer()
     products = database.get_low_stock_products(update.effective_user.id)
 
-    # --- MODIFICA QUI: Gestiamo il messaggio personalizzato direttamente ---
     if not products:
-        # Se non manca nulla, scriviamo noi il messaggio di successo (senza chiamare utils)
         message_text = "🚨 **Lista della Spesa**\n\n🎉 **Ottimo! Hai tutto quello che ti serve.**"
+        # Se è vuota, non ha senso stamparla
+        buttons = []
     else:
-        # Se c'è roba da comprare, usiamo la formattazione standard
         message_text = utils.format_inventory_message(products, title="🚨 Lista della Spesa")
-    # -----------------------------------------------------------------------
+        # Se c'è roba, aggiungiamo il tasto per inviarla
+        buttons = [InlineKeyboardButton("📤 Invia in Chat", callback_data='print_shopping_list')]
 
-    markup = utils.create_smart_grid([], back_button_data='main_menu')
+    markup = utils.create_smart_grid(buttons, back_button_data='main_menu')
 
     await query.edit_message_text(message_text, reply_markup=markup, parse_mode='Markdown')
 
+
+# --- NUOVE FUNZIONI DI STAMPA (MANDANO MESSAGGIO STATICO) ---
+
+async def print_shopping_list_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Manda un NUOVO messaggio con la lista, senza tastiera, facile da inoltrare"""
+    query = update.callback_query
+    await query.answer("Lista inviata in chat! 📤")
+
+    products = database.get_low_stock_products(update.effective_user.id)
+    if not products:
+        return  # Non stampiamo nulla se è vuota
+
+    message_text = utils.format_inventory_message(products, title="🚨 Lista della Spesa")
+
+    # Usiamo reply_text invece di edit_message_text per creare un NUOVO messaggio
+    await query.message.reply_text(message_text, parse_mode='Markdown')
+
+
+async def print_full_inventory_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Manda un NUOVO messaggio con l'inventario completo"""
+    query = update.callback_query
+    await query.answer("Inventario inviato in chat! 📤")
+
+    products = database.get_products(update.effective_user.id)
+    message_text = utils.format_inventory_message(products, title="📋 Inventario Completo")
+
+    await query.message.reply_text(message_text, parse_mode='Markdown')
+
+
+# ... (Tutto il resto del file menu_prodotti, inserimento, modifica etc. resta UGUALE)
 
 # --- INSERIMENTO PRODOTTI ---
 async def step_1_ask_category(update: Update, context: ContextTypes.DEFAULT_TYPE):
