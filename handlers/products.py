@@ -59,7 +59,7 @@ async def show_shopping_list(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 async def print_shopping_list_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer("Lista inviata! 📤")
+    await query.answer()
     chat_id = update.effective_chat.id
     user = update.effective_user
 
@@ -84,7 +84,7 @@ async def print_shopping_list_text(update: Update, context: ContextTypes.DEFAULT
 
 async def print_full_inventory_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer("Inventario inviato! 📤")
+    await query.answer()
     chat_id = update.effective_chat.id
     user = update.effective_user
 
