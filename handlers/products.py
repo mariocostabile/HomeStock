@@ -1,4 +1,4 @@
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove
 from telegram.ext import ContextTypes, ConversationHandler
 import database
 import constants
@@ -12,14 +12,12 @@ async def menu_prodotti(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     buttons = [
         InlineKeyboardButton("➕ Aggiungi Prodotto", callback_data='add_prod_start'),
-        InlineKeyboardButton("✏️ Modifica / Aggiorna", callback_data='mod_start'),
-        InlineKeyboardButton("🚨 Genera Lista Spesa", callback_data='show_shopping_list'),
-        InlineKeyboardButton("📋 Inventario Completo", callback_data='show_full_inventory')
+        InlineKeyboardButton("✏️ Modifica / Aggiorna", callback_data='mod_start')
     ]
     markup = utils.create_smart_grid(buttons, back_button_data='main_menu')
 
-    await query.edit_message_text("🛒 **Gestione Prodotti**\nCosa vuoi fare?", reply_markup=markup,
-                                  parse_mode='Markdown')
+    await query.edit_message_text("🛒 **Gestione Prodotti**\nQui puoi aggiungere o modificare le scorte.",
+                                  reply_markup=markup, parse_mode='Markdown')
     return ConversationHandler.END
 
 
@@ -30,8 +28,7 @@ async def show_full_inventory(update: Update, context: ContextTypes.DEFAULT_TYPE
     products = database.get_products(update.effective_user.id)
     message_text = utils.format_inventory_message(products, title="📋 Inventario Completo")
 
-    # Anche qui smart grid, anche se è un bottone solo
-    markup = utils.create_smart_grid([], back_button_data='menu_prodotti')
+    markup = utils.create_smart_grid([], back_button_data='main_menu')
 
     await query.edit_message_text(message_text, reply_markup=markup, parse_mode='Markdown')
 
@@ -40,10 +37,17 @@ async def show_shopping_list(update: Update, context: ContextTypes.DEFAULT_TYPE)
     query = update.callback_query
     await query.answer()
     products = database.get_low_stock_products(update.effective_user.id)
-    message_text = utils.format_inventory_message(products, title="🚨 Lista della Spesa")
-    if not products: message_text += "\n🎉 Ottimo! Hai tutto quello che ti serve."
 
-    markup = utils.create_smart_grid([], back_button_data='menu_prodotti')
+    # --- MODIFICA QUI: Gestiamo il messaggio personalizzato direttamente ---
+    if not products:
+        # Se non manca nulla, scriviamo noi il messaggio di successo (senza chiamare utils)
+        message_text = "🚨 **Lista della Spesa**\n\n🎉 **Ottimo! Hai tutto quello che ti serve.**"
+    else:
+        # Se c'è roba da comprare, usiamo la formattazione standard
+        message_text = utils.format_inventory_message(products, title="🚨 Lista della Spesa")
+    # -----------------------------------------------------------------------
+
+    markup = utils.create_smart_grid([], back_button_data='main_menu')
 
     await query.edit_message_text(message_text, reply_markup=markup, parse_mode='Markdown')
 
@@ -135,10 +139,9 @@ async def step_5_save_final(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     msg = f"✅ **{context.user_data['temp_nome']}** aggiunto!"
-    buttons = [InlineKeyboardButton("➕ Altro", callback_data='add_prod_start')]
-    markup = utils.create_smart_grid(buttons, back_button_data='main_menu')
-
-    await update.message.reply_text(msg, reply_markup=markup, parse_mode='Markdown')
+    keyboard = [[InlineKeyboardButton("➕ Altro", callback_data='add_prod_start')],
+                [InlineKeyboardButton("🏠 Menu", callback_data='main_menu')]]
+    await update.message.reply_text(msg, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
     return constants.FINE_PRODOTTO
 
 
@@ -175,7 +178,6 @@ async def show_move_category_selection(query, context, prod_id):
     for cat in categorie:
         buttons.append(InlineKeyboardButton(f"📂 {cat['nome']}", callback_data=f"act_move_do_{prod_id}_{cat['id']}"))
 
-    # Per il tasto back qui dobbiamo tornare al pannello del prodotto, non al menu
     markup = utils.create_smart_grid(buttons, back_button_data=f"mod_prod_{prod_id}")
 
     await query.edit_message_text("📍 **Dove vuoi spostare questo prodotto?**", reply_markup=markup,
@@ -204,20 +206,17 @@ async def show_control_panel(query, prod):
         f"Stato: {status}\n"
     )
 
-    # LISTA BOTTONI PER LA GRIGLIA (6 Elementi -> 3 Righe da 2)
-    buttons = [
-        InlineKeyboardButton("➖ Stock", callback_data=f"act_stock_minus_{prod['id']}"),
-        InlineKeyboardButton("Stock ➕", callback_data=f"act_stock_plus_{prod['id']}"),
-        InlineKeyboardButton("➖ Soglia", callback_data=f"act_thr_minus_{prod['id']}"),
-        InlineKeyboardButton("Soglia ➕", callback_data=f"act_thr_plus_{prod['id']}"),
-        InlineKeyboardButton("📂 Sposta", callback_data=f"act_move_start_{prod['id']}"),
-        InlineKeyboardButton("🗑️ Elimina", callback_data=f"act_del_{prod['id']}")
+    keyboard = [
+        [InlineKeyboardButton("➖ Stock", callback_data=f"act_stock_minus_{prod['id']}"),
+         InlineKeyboardButton("Stock ➕", callback_data=f"act_stock_plus_{prod['id']}")],
+        [InlineKeyboardButton("➖ Soglia", callback_data=f"act_thr_minus_{prod['id']}"),
+         InlineKeyboardButton("Soglia ➕", callback_data=f"act_thr_plus_{prod['id']}")],
+        [InlineKeyboardButton("📂 Sposta in Categoria", callback_data=f"act_move_start_{prod['id']}")],
+        [InlineKeyboardButton("🗑️ Elimina Prodotto", callback_data=f"act_del_{prod['id']}")],
+        [InlineKeyboardButton("🔙 Indietro", callback_data="back_to_prod_list")]
     ]
-
-    markup = utils.create_smart_grid(buttons, back_button_data="back_to_prod_list")
-
     try:
-        await query.edit_message_text(text, reply_markup=markup, parse_mode='Markdown')
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
     except Exception:
         pass
 

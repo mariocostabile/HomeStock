@@ -75,7 +75,8 @@ if __name__ == '__main__':
                 CallbackQueryHandler(categories.handle_category_actions, pattern='^back_to_cat_panel$')
             ]
         },
-        fallbacks=[CommandHandler('cancel', common.cancel)]
+        fallbacks=[CommandHandler('cancel', common.cancel)],
+        per_message=False
     )
 
     # --- CONVERSATION PRODOTTI ---
@@ -113,7 +114,8 @@ if __name__ == '__main__':
             ]
         },
         fallbacks=[CommandHandler('cancel', common.cancel),
-                   CallbackQueryHandler(common.cancel, pattern='^cancel_flow$')]
+                   CallbackQueryHandler(common.cancel, pattern='^cancel_flow$')],
+        per_message=False
     )
 
     # Aggiunta Handlers

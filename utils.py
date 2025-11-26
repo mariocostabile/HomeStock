@@ -22,7 +22,6 @@ def create_smart_grid(buttons, back_button_data=None, cols=None):
         use_grid = True  # Forza griglia
     else:
         # Logica Automatica (Default)
-        # Se ci sono 2 o più bottoni, usa la griglia
         if len(buttons) >= 2:
             use_grid = True
         else:
@@ -30,11 +29,9 @@ def create_smart_grid(buttons, back_button_data=None, cols=None):
 
     # Costruzione Layout
     if use_grid:
-        # Griglia a 2 colonne
         for i in range(0, len(buttons), 2):
             keyboard.append(buttons[i:i + 2])
     else:
-        # Lista verticale (1 colonna)
         for btn in buttons:
             keyboard.append([btn])
 
@@ -48,18 +45,22 @@ def create_smart_grid(buttons, back_button_data=None, cols=None):
 def get_main_menu_keyboard():
     # Definiamo i bottoni del menu principale
     buttons = [
+        InlineKeyboardButton("🛒 Gestisci Prodotti", callback_data='menu_prodotti'),
         InlineKeyboardButton("📂 Gestisci Categorie", callback_data='menu_categorie'),
-        InlineKeyboardButton("🛒 Gestisci Prodotti", callback_data='menu_prodotti')
+        InlineKeyboardButton("🚨 Genera Lista Spesa", callback_data='show_shopping_list'),
+        InlineKeyboardButton("📋 Inventario Completo", callback_data='show_full_inventory')
     ]
-    # Rimosso cols=1: Ora anche il menu principale sarà a scacchiera (fianco a fianco)
+    # Smart grid automatica
     return create_smart_grid(buttons)
 
 
 # --- FORMATTING ---
 
 def format_inventory_message(products, title="📋 Elenco Prodotti"):
+    """Formatta la lista dei prodotti in modo standard"""
     if not products:
-        return f"{title}\n\n_Nessun prodotto trovato._"
+        # MODIFICATO QUI: Usiamo il grassetto (**) invece del corsivo (_)
+        return f"{title}\n\n📦 **Nessun prodotto trovato.**\nInizia ad aggiungere qualcosa!"
 
     text = f"**{title}**\n"
 
@@ -75,12 +76,8 @@ def format_inventory_message(products, title="📋 Elenco Prodotti"):
         for item in items:
             qty = item['quantita']
             soglia = item['soglia_minima']
-            # Icona: 🔴 se sotto soglia, 🟢 se ok
             icon = "🔴" if qty <= soglia else "🟢"
-
-            # Formattazione numeri (rimuove .0 se intero)
             qty_str = f"{int(qty)}" if qty.is_integer() else f"{qty}"
-
             text += f"{icon} **{item['nome']}**: {qty_str} (Soglia: {int(soglia)})\n"
 
     return text
