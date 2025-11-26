@@ -78,6 +78,6 @@ def format_inventory_message(products, title="📋 Elenco Prodotti"):
             soglia = item['soglia_minima']
             icon = "🔴" if qty <= soglia else "🟢"
             qty_str = f"{int(qty)}" if qty.is_integer() else f"{qty}"
-            text += f"{icon} **{item['nome']}**: {qty_str} (Soglia: {int(soglia)})\n"
+            text += f"{icon} **{item['nome']}**: {qty_str} (Minimo: {int(soglia)})\n"
 
     return text
