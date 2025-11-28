@@ -21,14 +21,16 @@ async def menu_prodotti(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 
-# --- VISUALIZZAZIONE (DASHBOARD INTERATTIVA) ---
+# --- VISUALIZZAZIONE ---
 
 async def show_full_inventory(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    products = database.get_products(update.effective_user.id)
 
-    # TITOLO DASHBOARD
+    # MODIFICA: Chat ID
+    owner_id = update.effective_chat.id
+    products = database.get_products(owner_id)
+
     message_text = utils.format_inventory_message(products, title="📋 **Situazione Dispensa**")
 
     buttons = [InlineKeyboardButton("📤 Invia in Chat", callback_data='print_full_inventory')]
@@ -40,13 +42,15 @@ async def show_full_inventory(update: Update, context: ContextTypes.DEFAULT_TYPE
 async def show_shopping_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    products = database.get_low_stock_products(update.effective_user.id)
+
+    # MODIFICA: Chat ID
+    owner_id = update.effective_chat.id
+    products = database.get_low_stock_products(owner_id)
 
     if not products:
         message_text = "🚨 **Situazione Scorte**\n\n🎉 **Ottimo! Hai tutto quello che ti serve.**"
         buttons = []
     else:
-        # TITOLO DASHBOARD
         message_text = utils.format_inventory_message(products, title="🚨 **Prodotti in Esaurimento**")
         buttons = [InlineKeyboardButton("📤 Invia in Chat", callback_data='print_shopping_list')]
 
@@ -55,54 +59,43 @@ async def show_shopping_list(update: Update, context: ContextTypes.DEFAULT_TYPE)
     await query.edit_message_text(message_text, reply_markup=markup, parse_mode='Markdown')
 
 
-# --- FUNZIONI DI STAMPA (MODIFICATE: TORNA AL MENU) ---
+# --- FUNZIONI DI STAMPA ---
 
 async def print_shopping_list_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    chat_id = update.effective_chat.id
-    user = update.effective_user
 
-    products = database.get_low_stock_products(user.id)
+    # MODIFICA: Chat ID per recuperare i dati
+    chat_id = update.effective_chat.id
+    products = database.get_low_stock_products(chat_id)
+
     if not products: return
 
-    # 1. TITOLO SCONTRINO
     message_text = utils.format_inventory_message(products, title="🛒 **LISTA DELLA SPESA**")
 
-    # 2. CANCELLIAMO il vecchio menu
     await query.message.delete()
-
-    # 3. Mandiamo lo SCONTRINO (Lista statica)
     await context.bot.send_message(chat_id=chat_id, text=message_text, parse_mode='Markdown')
 
-    # 4. Mandiamo il MENU PRINCIPALE (Invece della dashboard prodotti)
-    menu_text = f"Ciao {user.first_name}! 👋\nEccoci tornati al menu principale."
+    menu_text = f"Eccoci tornati al menu principale."
     menu_markup = utils.get_main_menu_keyboard()
-
     await context.bot.send_message(chat_id=chat_id, text=menu_text, reply_markup=menu_markup)
 
 
 async def print_full_inventory_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
+
+    # MODIFICA: Chat ID
     chat_id = update.effective_chat.id
-    user = update.effective_user
+    products = database.get_products(chat_id)
 
-    products = database.get_products(user.id)
-
-    # 1. TITOLO REPORT
     message_text = utils.format_inventory_message(products, title="📦 **INVENTARIO TOTALE**")
 
-    # 2. Delete
     await query.message.delete()
-
-    # 3. Manda REPORT
     await context.bot.send_message(chat_id=chat_id, text=message_text, parse_mode='Markdown')
 
-    # 4. Manda MENU PRINCIPALE
-    menu_text = f"Ciao {user.first_name}! 👋\nEccoci tornati al menu principale."
+    menu_text = f"Eccoci tornati al menu principale."
     menu_markup = utils.get_main_menu_keyboard()
-
     await context.bot.send_message(chat_id=chat_id, text=menu_text, reply_markup=menu_markup)
 
 
@@ -110,8 +103,10 @@ async def print_full_inventory_text(update: Update, context: ContextTypes.DEFAUL
 async def step_1_ask_category(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    user_id = update.effective_user.id
-    categorie = database.get_categories(user_id)
+
+    # MODIFICA: Chat ID
+    owner_id = update.effective_chat.id
+    categorie = database.get_categories(owner_id)
 
     if not categorie:
         await query.edit_message_text("⚠️ Non hai categorie!", reply_markup=utils.get_main_menu_keyboard())
@@ -124,7 +119,7 @@ async def step_1_ask_category(update: Update, context: ContextTypes.DEFAULT_TYPE
     markup = utils.create_smart_grid(buttons, back_button_data='menu_prodotti')
 
     if query.message:
-        await query.edit_message_text("**Scegli la categoria:**", reply_markup=markup, parse_mode='Markdown')
+        await query.edit_message_text("1️⃣ **Scegli la categoria:**", reply_markup=markup, parse_mode='Markdown')
     return constants.SCELTA_CATEGORIA_PRODOTTO
 
 
@@ -135,7 +130,7 @@ async def step_2_ask_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data['temp_cat_id'] = query.data.split("_")[2]
 
     keyboard = [[InlineKeyboardButton("🔙 Indietro", callback_data='back_to_step_1')]]
-    await query.edit_message_text("**Come si chiama il prodotto?**", reply_markup=InlineKeyboardMarkup(keyboard),
+    await query.edit_message_text("2️⃣ **Come si chiama il prodotto?**", reply_markup=InlineKeyboardMarkup(keyboard),
                                   parse_mode='Markdown')
     return constants.NOME_PRODOTTO
 
@@ -145,14 +140,14 @@ async def step_3_ask_qty(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data['temp_nome'] = update.message.text
         keyboard = [[InlineKeyboardButton("🔙 Indietro", callback_data='back_to_step_2')]]
         await update.message.reply_text(
-            f"Ok, **{context.user_data['temp_nome']}**.\n**Quantità attuale?**\n(Scrivi solo il numero)",
+            f"Ok, **{context.user_data['temp_nome']}**.\n3️⃣ **Quantità attuale?**\n(Scrivi solo il numero)",
             reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
     elif update.callback_query:
         query = update.callback_query
         await query.answer()
         keyboard = [[InlineKeyboardButton("🔙 Indietro", callback_data='back_to_step_2')]]
         await query.edit_message_text(
-            f"Ok, **{context.user_data.get('temp_nome')}**.\n**Quantità attuale?**\n(Scrivi solo il numero)",
+            f"Ok, **{context.user_data.get('temp_nome')}**.\n3️⃣ **Quantità attuale?**\n(Scrivi solo il numero)",
             reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
     return constants.QUANTITA_PRODOTTO
 
@@ -166,8 +161,8 @@ async def step_4_ask_threshold(update: Update, context: ContextTypes.DEFAULT_TYP
             return constants.QUANTITA_PRODOTTO
 
         keyboard = [[InlineKeyboardButton("🔙 Indietro", callback_data='back_to_step_3')]]
-        await update.message.reply_text("**Soglia minima?**", reply_markup=InlineKeyboardMarkup(keyboard),
-                                        parse_mode='Markdown')
+        await update.message.reply_text("4️⃣ **Quantità Minima?**\n(Sotto questo numero ti avviserò)",
+                                        reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
     elif update.callback_query:
         query = update.callback_query
         await query.answer()
@@ -184,8 +179,11 @@ async def step_5_save_final(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⚠️ Numero non valido!")
         return constants.SOGLIA_PRODOTTO
 
+    # MODIFICA: Chat ID
+    owner_id = update.effective_chat.id
+
     database.add_product(
-        update.effective_user.id,
+        owner_id,
         context.user_data['temp_cat_id'],
         context.user_data['temp_nome'],
         context.user_data['temp_qty'],
@@ -193,17 +191,20 @@ async def step_5_save_final(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     msg = f"✅ **{context.user_data['temp_nome']}** aggiunto!\n(Stock: {context.user_data['temp_qty']} | Minimo: {soglia})"
-
     keyboard = [[InlineKeyboardButton("➕ Altro", callback_data='add_prod_start')],
                 [InlineKeyboardButton("🏠 Menu", callback_data='main_menu')]]
     await update.message.reply_text(msg, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
     return constants.FINE_PRODOTTO
 
+
 # --- MODIFICA PRODOTTI ---
 
 async def list_products_for_category(query, context, cat_id):
+    # MODIFICA: Chat ID (da query.message per i callback)
+    owner_id = query.message.chat_id
+
     if cat_id == 'orphan':
-        products = database.get_orphaned_products(query.from_user.id)
+        products = database.get_orphaned_products(owner_id)
         title = "⚠️ Prodotti Senza Categoria"
     else:
         products = database.get_products_by_category(cat_id)
@@ -221,8 +222,9 @@ async def list_products_for_category(query, context, cat_id):
 
 
 async def show_move_category_selection(query, context, prod_id):
-    user_id = query.from_user.id
-    categorie = database.get_categories(user_id)
+    # MODIFICA: Chat ID
+    owner_id = query.message.chat_id
+    categorie = database.get_categories(owner_id)
 
     if not categorie:
         await query.answer("Crea prima delle categorie!", show_alert=True)
@@ -278,9 +280,11 @@ async def show_control_panel(query, prod):
 async def start_modify_flow(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    user_id = update.effective_user.id
-    categorie = database.get_categories(user_id)
-    orphans = database.get_orphaned_products(user_id)
+
+    # MODIFICA: Chat ID
+    owner_id = update.effective_chat.id
+    categorie = database.get_categories(owner_id)
+    orphans = database.get_orphaned_products(owner_id)
 
     buttons = []
 

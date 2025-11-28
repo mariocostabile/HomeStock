@@ -2,7 +2,9 @@
 
 HomeStock è un bot Telegram progettato per semplificare la gestione dell'inventario domestico. Permette agli utenti di tracciare gli articoli casalinghi, organizzarli in categorie, impostare soglie di scorta minima e generare automaticamente liste della spesa.
 
-Il progetto è sviluppato in Python utilizzando la libreria `python-telegram-bot`, adottando un'architettura modulare e un database SQLite per la persistenza dei dati.
+![Python Version](https://img.shields.io/badge/python-3.10%2B-blue)
+![Bot Status](https://img.shields.io/badge/status-online-green)
+![License](https://img.shields.io/badge/license-MIT-green)
 
 ## Funzionalità
 
@@ -13,6 +15,11 @@ Il progetto è sviluppato in Python utilizzando la libreria `python-telegram-bot
 * **Pannello di Controllo Interattivo:** Interfaccia inline per modificare rapidamente le scorte (+/-), aggiornare le soglie, spostare articoli tra categorie o eliminarli.
 * **Interfaccia Smart Grid:** L'interfaccia adatta automaticamente la disposizione dei pulsanti (lista vs griglia a due colonne) in base al numero di elementi per ottimizzare lo spazio sullo schermo.
 * **Sicurezza dei Dati:** L'eliminazione di una categoria non cancella i prodotti contenuti; questi vengono spostati in un'area sicura "Senza Categoria" per essere riassegnati.
+
+### Modalità Condivisa (Gruppi)
+HomeStock supporta nativamente i gruppi Telegram.
+* **Uso Privato:** Se scrivi al bot in privato, gestisci il tuo inventario personale.
+* **Uso Condiviso:** Aggiungi il bot a un gruppo (es. "Coinquilini" o "Famiglia"). L'inventario sarà automaticamente condiviso tra tutti i membri del gruppo. Chiunque nel gruppo può aggiungere, modificare o visualizzare gli stessi prodotti.
 
 ## Architettura Tecnica
 
