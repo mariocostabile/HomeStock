@@ -4,7 +4,7 @@ HomeStock è un bot Telegram progettato per semplificare la gestione dell'invent
 
 ![Python Version](https://img.shields.io/badge/python-3.10%2B-blue)
 ![Bot Status](https://img.shields.io/badge/status-online-green)
-![License](https://img.shields.io/badge/license-MIT-green)
+![License](https://img.shields.io/badge/License-CC%20BY--NC--SA%204.0-lightgrey.svg)
 
 ## Funzionalità
 
