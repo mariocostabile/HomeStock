@@ -31,7 +31,8 @@ async def show_full_inventory(update: Update, context: ContextTypes.DEFAULT_TYPE
     owner_id = update.effective_chat.id
     products = database.get_products(owner_id)
 
-    message_text = utils.format_inventory_message(products, title="📋 **Situazione Dispensa**")
+    # shopping_list_mode=False (default) -> Inventario standard
+    message_text = utils.format_inventory_message(products, title="📋 **Situazione Dispensa**", shopping_list_mode=False)
 
     buttons = [InlineKeyboardButton("📤 Invia in Chat", callback_data='print_full_inventory')]
     markup = utils.create_smart_grid(buttons, back_button_data='main_menu')
@@ -45,13 +46,15 @@ async def show_shopping_list(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     # MODIFICA: Chat ID
     owner_id = update.effective_chat.id
+    # Nota: get_low_stock_products restituisce tutto ciò che è <= soglia (quindi Rossi e Gialli)
     products = database.get_low_stock_products(owner_id)
 
     if not products:
-        message_text = "🚨 **Situazione Scorte**\n\n🎉 **Ottimo! Hai tutto quello che ti serve.**"
+        message_text = "🎉 **Ottimo! Hai tutto quello che ti serve.**"
         buttons = []
     else:
-        message_text = utils.format_inventory_message(products, title="🚨 **Prodotti in Esaurimento**")
+        # shopping_list_mode=True -> Divide Rossi e Gialli
+        message_text = utils.format_inventory_message(products, title="🚨 **Prodotti in Esaurimento**", shopping_list_mode=True)
         buttons = [InlineKeyboardButton("📤 Invia in Chat", callback_data='print_shopping_list')]
 
     markup = utils.create_smart_grid(buttons, back_button_data='main_menu')
@@ -71,7 +74,8 @@ async def print_shopping_list_text(update: Update, context: ContextTypes.DEFAULT
 
     if not products: return
 
-    message_text = utils.format_inventory_message(products, title="🛒 **LISTA DELLA SPESA**")
+    # shopping_list_mode=True -> Divide Rossi e Gialli
+    message_text = utils.format_inventory_message(products, title="🛒 **LISTA DELLA SPESA**", shopping_list_mode=True)
 
     await query.message.delete()
     await context.bot.send_message(chat_id=chat_id, text=message_text, parse_mode='Markdown')
@@ -153,46 +157,74 @@ async def step_3_ask_qty(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def step_4_ask_threshold(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Caso input testuale (Utente ha appena scritto la Quantità)
     if update.message:
         try:
+            # Proviamo a convertire in numero
             context.user_data['temp_qty'] = float(update.message.text)
         except ValueError:
-            await update.message.reply_text("⚠️ Per favore inserisci un numero valido!")
+            # ERRORE: Non è un numero. Aggiungiamo il tasto indietro!
+            keyboard = [[InlineKeyboardButton("🔙 Indietro", callback_data='back_to_step_2')]]
+            await update.message.reply_text(
+                "⚠️ **Devi inserire un numero!**\n(Es: 1, 5, 10)\n\nRiprova o torna indietro:",
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode='Markdown'
+            )
+            # Rimaniamo nello stato QUANTITA_PRODOTTO finché non inserisce giusto o torna indietro
             return constants.QUANTITA_PRODOTTO
 
+        # Se è andato tutto bene, procediamo a chiedere la soglia
         keyboard = [[InlineKeyboardButton("🔙 Indietro", callback_data='back_to_step_3')]]
         await update.message.reply_text("4️⃣ **Quantità Minima?**\n(Sotto questo numero ti avviserò)",
                                         reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+
+    # Caso callback (Tasto Indietro premuto dallo step successivo)
     elif update.callback_query:
         query = update.callback_query
         await query.answer()
         keyboard = [[InlineKeyboardButton("🔙 Indietro", callback_data='back_to_step_3')]]
         await query.edit_message_text("4️⃣ **Quantità Minima?**", reply_markup=InlineKeyboardMarkup(keyboard),
                                       parse_mode='Markdown')
+
     return constants.SOGLIA_PRODOTTO
 
 
 async def step_5_save_final(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
-        soglia = float(update.message.text)
+        input_soglia = float(update.message.text)
     except ValueError:
-        await update.message.reply_text("⚠️ Numero non valido!")
+        # ERRORE: Non è un numero. Aggiungiamo il tasto indietro!
+        keyboard = [[InlineKeyboardButton("🔙 Indietro", callback_data='back_to_step_3')]]
+        await update.message.reply_text(
+            "⚠️ **Devi inserire un numero!**\nRiprova o torna indietro:",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
         return constants.SOGLIA_PRODOTTO
 
-    # MODIFICA: Chat ID
     owner_id = update.effective_chat.id
 
+    # Recuperiamo la quantità inserita prima
+    qty = context.user_data['temp_qty']
+
+    # Salvataggio nel DB
     database.add_product(
         owner_id,
         context.user_data['temp_cat_id'],
         context.user_data['temp_nome'],
-        context.user_data['temp_qty'],
-        soglia
+        qty,
+        input_soglia
     )
 
-    msg = f"✅ **{context.user_data['temp_nome']}** aggiunto!\n(Stock: {context.user_data['temp_qty']} | Minimo: {soglia})"
+    # --- Visualizzazione Pulita (No decimali se intero) ---
+    real_qty = int(qty) if qty.is_integer() else qty
+    real_soglia = int(input_soglia) if input_soglia.is_integer() else input_soglia
+
+    msg = f"✅ **{context.user_data['temp_nome']}** aggiunto!\n(Stock: {real_qty} | Minimo: {real_soglia})"
+
     keyboard = [[InlineKeyboardButton("➕ Altro", callback_data='add_prod_start')],
                 [InlineKeyboardButton("🏠 Menu", callback_data='main_menu')]]
+
     await update.message.reply_text(msg, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
     return constants.FINE_PRODOTTO
 
@@ -251,7 +283,13 @@ async def show_control_panel(query, prod):
         cat_info = database.get_category_by_id(prod['categoria_id'])
         if cat_info: cat_name = cat_info['nome']
 
-    status = "🟢 OK" if qty > soglia else "🔴 SCORTA BASSA"
+    # --- LOGICA STATI NEL PANNELLO ---
+    if qty < soglia:
+        status = "🔴 SCORTA BASSA"
+    elif qty == soglia:
+        status = "🟡 IN ESAURIMENTO"
+    else:
+        status = "🟢 OK"
 
     text = (
         f"✏️ **Gestione: {prod['nome']}**\n"

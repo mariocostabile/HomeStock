@@ -56,14 +56,66 @@ def get_main_menu_keyboard():
 
 # --- FORMATTING ---
 
-def format_inventory_message(products, title="📋 Elenco Prodotti"):
-    """Formatta la lista dei prodotti in modo standard"""
+def format_inventory_message(products, title="📋 Elenco Prodotti", shopping_list_mode=False):
+    """
+    Formatta la lista dei prodotti.
+    shopping_list_mode=True: Separa 'Da Comprare' (Rosso) da 'Opzionali' (Giallo).
+    shopping_list_mode=False: Mostra tutto raggruppato per categoria con icone R/G/V.
+    """
     if not products:
-        # MODIFICATO QUI: Usiamo il grassetto (**) invece del corsivo (_)
-        return f"{title}\n\n📦 **Nessun prodotto trovato.**\nInizia ad aggiungere qualcosa!"
+        if shopping_list_mode:
+            return f"{title}\n\n🎉 **Ottimo! Hai tutto quello che ti serve.**\nLa dispensa è piena."
+        else:
+            return f"{title}\n\n📦 **Nessun prodotto trovato.**\nInizia ad aggiungere qualcosa!"
 
     text = f"**{title}**\n"
 
+    # --- LOGICA LISTA DELLA SPESA (SEPARATA) ---
+    if shopping_list_mode:
+        red_list = []  # Quantità < Soglia
+        yellow_list = []  # Quantità == Soglia
+
+        for p in products:
+            if p['quantita'] < p['soglia_minima']:
+                red_list.append(p)
+            elif p['quantita'] == p['soglia_minima']:
+                yellow_list.append(p)
+
+        # 1. Sezione DA COMPRARE (Rossi)
+        if red_list:
+            text += "\n🔥 **DA COMPRARE**\n"
+            grouped_red = {}
+            for p in red_list:
+                cat = p['nome_categoria'] if p['nome_categoria'] else "Altro"
+                if cat not in grouped_red: grouped_red[cat] = []
+                grouped_red[cat].append(p)
+
+            for category, items in grouped_red.items():
+                for item in items:
+                    # Rimuove .0 se è intero
+                    qty_str = f"{int(item['quantita'])}" if item['quantita'].is_integer() else f"{item['quantita']}"
+                    # FORMATO: "🔴 Nome: Quantità"
+                    text += f"🔴 **{item['nome']}**: {qty_str}\n"
+
+        # 2. Sezione OPZIONALI (Gialli)
+        if yellow_list:
+            text += "\n⚠️ **OPZIONALI (In esaurimento)**\n"
+            grouped_yellow = {}
+            for p in yellow_list:
+                cat = p['nome_categoria'] if p['nome_categoria'] else "Altro"
+                if cat not in grouped_yellow: grouped_yellow[cat] = []
+                grouped_yellow[cat].append(p)
+
+            for category, items in grouped_yellow.items():
+                for item in items:
+                    # Rimuove .0 se è intero
+                    qty_str = f"{int(item['quantita'])}" if item['quantita'].is_integer() else f"{item['quantita']}"
+                    # FORMATO: "🟡 Nome: Quantità"
+                    text += f"🟡 **{item['nome']}**: {qty_str}\n"
+
+        return text
+
+    # --- LOGICA INVENTARIO COMPLETO (STANDARD) ---
     grouped = {}
     for p in products:
         cat = p['nome_categoria'] if p['nome_categoria'] else "Senza Categoria"
@@ -76,8 +128,19 @@ def format_inventory_message(products, title="📋 Elenco Prodotti"):
         for item in items:
             qty = item['quantita']
             soglia = item['soglia_minima']
-            icon = "🔴" if qty <= soglia else "🟢"
+
+            # Logica Icone a 3 stati
+            if qty < soglia:
+                icon = "🔴"  # Sotto soglia
+            elif qty == soglia:
+                icon = "🟡"  # Al limite
+            else:
+                icon = "🟢"  # Ok
+
             qty_str = f"{int(qty)}" if qty.is_integer() else f"{qty}"
-            text += f"{icon} **{item['nome']}**: {qty_str} (Minimo: {int(soglia)})\n"
+            soglia_str = f"{int(soglia)}" if soglia.is_integer() else f"{soglia}"
+
+            # FORMATO INVENTARIO: "🔴 Nome: Quantità (Min: Soglia)"
+            text += f"{icon} **{item['nome']}**: {qty_str} (Min: {soglia_str})\n"
 
     return text
