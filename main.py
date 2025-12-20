@@ -14,8 +14,14 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
-logger = logging.getLogger(__name__)
 
+# --- MODIFICA: SILENZIAMENTO LOG RUMOROSI ---
+# Impostiamo a WARNING le librerie che "parlano" troppo (polling di rete)
+# Così vedrai solo i TUOI messaggi o gli ERRORI gravi.
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("telegram").setLevel(logging.WARNING)
+
+logger = logging.getLogger(__name__)
 
 # 2. Funzione Gestore Errori
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
