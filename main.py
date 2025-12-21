@@ -1,53 +1,49 @@
+import sys
 import logging
+from telegram import Update
 from telegram.ext import (
     ApplicationBuilder, CommandHandler, CallbackQueryHandler,
     ConversationHandler, MessageHandler, filters, ContextTypes
 )
+from telegram.error import TimedOut, NetworkError
+from telegram.request import HTTPXRequest  # <--- IMPORTANTE: Importiamo questo
+
 import config
 import database
 import constants
 from handlers import common, categories, products
 
 # 1. Configurazione Logging
-# Questo serve a vedere cosa succede nella console nera
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
 
-# --- MODIFICA: SILENZIAMENTO LOG RUMOROSI ---
-# Impostiamo a WARNING le librerie che "parlano" troppo (polling di rete)
-# Così vedrai solo i TUOI messaggi o gli ERRORI gravi.
+# Zittiamo le librerie che "parlano" troppo
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("telegram").setLevel(logging.WARNING)
 
 logger = logging.getLogger(__name__)
 
-# 2. Funzione Gestore Errori
-async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """
-    Questa funzione viene chiamata ogni volta che si verifica un'eccezione.
-    Invece di far crashare il bot, logghiamo l'errore.
-    """
-    logger.error(msg="Eccezione durante la gestione dell'update:", exc_info=context.error)
-    # Su PythonAnywhere, spesso sono errori di rete transitori (503).
-    # Loggando l'errore, il bot rimane vivo e riprova al prossimo ciclo.
-
-
 if __name__ == '__main__':
     # Init Database
     database.init_db()
 
-    # 3. Costruzione App con parametri anti-crash per PythonAnywhere
-    # - connect_timeout e read_timeout: aumentati per tollerare la lentezza del proxy
-    # - http_version: forzato a 1.1 per stabilità
+    # --- CONFIGURAZIONE RETE ---
+    # Qui impostiamo i timeout per reti mobili instabili
+    trequest = HTTPXRequest(
+        connection_pool_size=8,
+        read_timeout=30,   # Aumentato
+        write_timeout=30,  # Aumentato
+        connect_timeout=30,# Aumentato
+        http_version='1.1' # Stabilità per reti mobili
+    )
+
+    # 2. Costruzione App
     app = (
         ApplicationBuilder()
         .token(config.TOKEN)
-        .connect_timeout(30)
-        .read_timeout(30)
-        .get_updates_http_version('1.1')
-        .http_version('1.1')
+        .request(trequest)  # <--- Inseriamo la configurazione qui!
         .build()
     )
 
@@ -69,8 +65,6 @@ if __name__ == '__main__':
             constants.MODIFICA_CATEGORIA: [
                 CallbackQueryHandler(categories.show_category_panel, pattern='^sel_edit_cat_'),
                 CallbackQueryHandler(categories.menu_categorie, pattern='^back_to_cat_menu$'),
-
-                # ### FIX QUI: Aggiungiamo il gestore per tornare alla lista dopo la rinomina
                 CallbackQueryHandler(categories.list_categories_for_edit, pattern='^edit_cat_list$')
             ],
             constants.AZIONI_CATEGORIA: [
@@ -136,16 +130,26 @@ if __name__ == '__main__':
     app.add_handler(CallbackQueryHandler(categories.menu_categorie, pattern='^menu_categorie$'))
     app.add_handler(CallbackQueryHandler(products.menu_prodotti, pattern='^menu_prodotti$'))
 
-    # Views
+    # Views & Prints
     app.add_handler(CallbackQueryHandler(products.show_full_inventory, pattern='^show_full_inventory$'))
     app.add_handler(CallbackQueryHandler(products.show_shopping_list, pattern='^show_shopping_list$'))
-
-    # --- NUOVI HANDLERS PER LA STAMPA (Invia in Chat) ---
     app.add_handler(CallbackQueryHandler(products.print_shopping_list_text, pattern='^print_shopping_list$'))
     app.add_handler(CallbackQueryHandler(products.print_full_inventory_text, pattern='^print_full_inventory$'))
 
-    # 4. Registrazione del gestore errori (IMPORTANTE)
-    app.add_error_handler(error_handler)
+    print("🚀 HomeStock è in esecuzione...")
+    print("Premi Ctrl+C per fermare lo script start.sh")
 
-    print("HomeStock (Professional Edition) è in esecuzione... 🚀")
-    app.run_polling()
+    # 3. AVVIO CON GESTIONE CRASH (PER START.SH)
+    try:
+        # Qui NON passiamo più i timeout, perché li abbiamo messi in 'trequest' sopra
+        app.run_polling(
+            allowed_updates=Update.ALL_TYPES
+        )
+    except (TimedOut, NetworkError) as e:
+        print(f"\n⚠️ ERRORE DI RETE RILEVATO: {e}")
+        print("🔄 Chiudo il processo Python per permettere a start.sh di riavviarlo...")
+        sys.exit(1)
+    except Exception as e:
+        print(f"\n❌ ERRORE IMPREVISTO: {e}")
+        print("🔄 Riavvio forzato...")
+        sys.exit(1)
