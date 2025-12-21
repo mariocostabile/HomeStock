@@ -1,4 +1,5 @@
 import sys
+import os  # <--- FONDAMENTALE per il riavvio forzato
 import logging
 from telegram import Update
 from telegram.ext import (
@@ -6,7 +7,7 @@ from telegram.ext import (
     ConversationHandler, MessageHandler, filters, ContextTypes
 )
 from telegram.error import TimedOut, NetworkError
-from telegram.request import HTTPXRequest  # <--- IMPORTANTE: Importiamo questo
+from telegram.request import HTTPXRequest
 
 import config
 import database
@@ -25,27 +26,51 @@ logging.getLogger("telegram").setLevel(logging.WARNING)
 
 logger = logging.getLogger(__name__)
 
+
+# --- FUNZIONE KILLER PER ERRORI DI RETE (CRUCIALE PER START.SH) ---
+async def global_error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """
+    Questa funzione intercetta gli errori mentra il bot è attivo.
+    Se è un errore di rete, uccide il processo per far scattare start.sh.
+    """
+    try:
+        logger.error(f"⚠️ Eccezione rilevata: {context.error}")
+
+        # Se l'errore riguarda la connessione (Timeout, NetworkError, OSError)
+        if isinstance(context.error, (TimedOut, NetworkError, OSError)):
+            logger.error("🛑 CRASH DI RETE RILEVATO! Chiudo il processo forzatamente...")
+            # os._exit(1) è brutale: chiude tutto all'istante senza aspettare.
+            os._exit(1)
+    except:
+        # Se fallisce anche l'handler, chiudiamo comunque
+        os._exit(1)
+
+
 if __name__ == '__main__':
     # Init Database
     database.init_db()
 
     # --- CONFIGURAZIONE RETE ---
-    # Qui impostiamo i timeout per reti mobili instabili
+    # Impostiamo i timeout per rendere il bot più tollerante alle reti mobili
     trequest = HTTPXRequest(
         connection_pool_size=8,
-        read_timeout=30,   # Aumentato
-        write_timeout=30,  # Aumentato
-        connect_timeout=30,# Aumentato
-        http_version='1.1' # Stabilità per reti mobili
+        read_timeout=30,
+        write_timeout=30,
+        connect_timeout=30,
+        http_version='1.1'
     )
 
     # 2. Costruzione App
     app = (
         ApplicationBuilder()
-        .token(config.TOKEN)
-        .request(trequest)  # <--- Inseriamo la configurazione qui!
+        # NOTA: Assicurati che nel tuo config.py la variabile si chiami TOKEN o TELEGRAM_TOKEN
+        .token(config.TELEGRAM_TOKEN if hasattr(config, 'TELEGRAM_TOKEN') else config.TOKEN)
+        .request(trequest)
         .build()
     )
+
+    # --- REGISTRAZIONE DEL KILLER (Error Handler) ---
+    app.add_error_handler(global_error_handler)
 
     # --- CONVERSATION CATEGORIE ---
     conv_cat = ConversationHandler(
@@ -139,17 +164,12 @@ if __name__ == '__main__':
     print("🚀 HomeStock è in esecuzione...")
     print("Premi Ctrl+C per fermare lo script start.sh")
 
-    # 3. AVVIO CON GESTIONE CRASH (PER START.SH)
+    # 3. AVVIO CON GESTIONE CRASH
+    # Usiamo run_polling "pulito" perché la gestione errori è delegata a global_error_handler
+    # Tuttavia, teniamo il try/except esterno per catturare errori in fase di avvio iniziale.
     try:
-        # Qui NON passiamo più i timeout, perché li abbiamo messi in 'trequest' sopra
-        app.run_polling(
-            allowed_updates=Update.ALL_TYPES
-        )
-    except (TimedOut, NetworkError) as e:
-        print(f"\n⚠️ ERRORE DI RETE RILEVATO: {e}")
-        print("🔄 Chiudo il processo Python per permettere a start.sh di riavviarlo...")
-        sys.exit(1)
+        app.run_polling(allowed_updates=Update.ALL_TYPES)
     except Exception as e:
-        print(f"\n❌ ERRORE IMPREVISTO: {e}")
-        print("🔄 Riavvio forzato...")
-        sys.exit(1)
+        print(f"\n❌ ERRORE FATALE MAIN: {e}")
+        # Se capita qualcosa qui, forziamo l'uscita per start.sh
+        os._exit(1)
