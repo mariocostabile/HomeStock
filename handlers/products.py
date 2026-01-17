@@ -338,7 +338,7 @@ async def start_modify_flow(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     markup = utils.create_smart_grid(buttons, back_button_data='menu_prodotti')
 
-    await query.edit_message_text("✏️ **Scegli un prodotto:**", reply_markup=markup,
+    await query.edit_message_text("✏️ **Scegli la categoria del prodotto:**", reply_markup=markup,
                                   parse_mode='Markdown')
     return constants.MODIFICA_PRODOTTO
 
